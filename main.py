@@ -80,6 +80,7 @@ class InventoryApp:
             pass
 
         style.configure(".", font=("Segoe UI", 10), foreground=self.colors["text"])
+        style.configure("TLabel", font=("Segoe UI", 10))
         style.configure("TFrame", background=self.colors["background"])
         style.configure("TLabel", background=self.colors["background"], foreground=self.colors["text"])
         style.configure("Title.TLabel", background=self.colors["background"],
@@ -92,8 +93,8 @@ class InventoryApp:
                         bordercolor=self.colors["border"], relief="solid", borderwidth=1)
         style.configure("TLabelframe.Label", background=self.colors["surface"],
                         foreground=self.colors["primary"], font=("Segoe UI", 10, "bold"))
-        style.configure("TButton", padding=(11, 7), background=self.colors["primary"],
-                        foreground="#FFFFFF", borderwidth=0, focusthickness=0)
+        style.configure("TButton", padding=(12, 8), background=self.colors["primary"],
+                        foreground="#FFFFFF", borderwidth=0, focusthickness=0, relief="flat")
         style.map("TButton",
                   background=[("pressed", self.colors["primary_active"]),
                               ("active", self.colors["primary_active"])],
@@ -107,8 +108,9 @@ class InventoryApp:
                   foreground=[("readonly", self.colors["text"])])
         style.configure("TNotebook", background=self.colors["background"], borderwidth=0,
                         tabmargins=(2, 5, 2, 0))
-        style.configure("TNotebook.Tab", padding=(16, 9), background="#E5ECF5",
-                        foreground=self.colors["muted"], font=("Segoe UI", 10, "bold"))
+        style.configure("TNotebook.Tab", padding=(13, 8), background="#E5ECF5",
+                        foreground=self.colors["muted"], font=("Segoe UI", 10, "bold"), relief="flat")
+        style.map("TNotebook.Tab", padding=[("selected", (18, 11)), ("!selected", (13, 8))])
         style.map("TNotebook.Tab",
                   background=[("selected", self.colors["primary"]), ("active", "#DCE7F5")],
                   foreground=[("selected", "#FFFFFF"), ("active", self.colors["text"])])
@@ -116,8 +118,8 @@ class InventoryApp:
                         background=self.colors["surface"], fieldbackground=self.colors["surface"],
                         foreground=self.colors["text"], bordercolor=self.colors["border"],
                         borderwidth=0)
-        style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"),
-                        background="#E8EEF7", foreground="#334155", padding=(8, 10),
+        style.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"),
+                        background="#E8EEF7", foreground="#334155", padding=(4, 8),
                         relief="flat")
         style.map("Treeview",
                   background=[("selected", self.colors["selected"])],
@@ -173,7 +175,7 @@ class InventoryApp:
         self.products_tree.tag_configure("odd", background=self.colors["surface"])
         self.products_tree.tag_configure("even", background=self.colors["table_alt"])
         labels = ("Name", "Type", "Days", "Available stock", "Default cost IDR", "Default cost PHP", "Selling price", "Sold qty", "Sold amount", "Sold cost PHP", "Profit PHP")
-        widths = (160, 90, 55, 95, 105, 105, 105, 65, 110, 110, 110)
+        widths = (155, 90, 55, 105, 112, 112, 112, 72, 112, 112, 105)
         for col, label, width in zip(cols, labels, widths):
             self.products_tree.heading(col, text=label, anchor="center")
             self.products_tree.column(col, width=width, anchor="center")
@@ -218,11 +220,14 @@ class InventoryApp:
         self.codes_tree.tag_configure("odd", background=self.colors["surface"])
         self.codes_tree.tag_configure("even", background=self.colors["table_alt"])
         labels = ("No", "Code", "Name", "Type", "Days", "Cost IDR", "Cost PHP", "Sold price PHP", "Availability", "Date claimed")
-        widths = (50, 260, 160, 100, 60, 100, 115, 125, 110, 110)
+        widths = (48, 250, 150, 90, 55, 105, 110, 125, 105, 110)
         for col, label, width in zip(cols, labels, widths):
             self.codes_tree.heading(col, text=label, anchor="center")
             self.codes_tree.column(col, width=width, anchor="center")
         self.codes_tree.pack(fill="both", expand=True)
+        codes_scroll = ttk.Scrollbar(self.codes_tab, orient="horizontal", command=self.codes_tree.xview)
+        codes_scroll.pack(fill="x")
+        self.codes_tree.configure(xscrollcommand=codes_scroll.set)
         ttk.Label(self.codes_tab, text="Select a code and click Edit cost (IDR) to record its actual purchase price. Editing a cost recalculates that code's PHP cost using the current rate.").pack(anchor="w", pady=(8, 0))
 
     def build_summary_tab(self):
