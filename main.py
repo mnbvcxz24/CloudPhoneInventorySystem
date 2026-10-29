@@ -1,8 +1,11 @@
+import json
 import sqlite3
 import tkinter as tk
-from tkinter import ttk, messagebox
-from datetime import date
+from tkinter import ttk, messagebox, simpledialog
+from datetime import date, datetime
 from pathlib import Path
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
 
 
 APP_NAME = "RFInventorySystem"
@@ -29,6 +32,8 @@ class InventoryApp:
         PRAGMA foreign_keys = ON;
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         INSERT OR IGNORE INTO settings(key,value) VALUES ('idr_to_php','0.0035375');
+        INSERT OR IGNORE INTO settings(key,value) VALUES ('sheets_web_app_url','');
+        INSERT OR IGNORE INTO settings(key,value) VALUES ('sheets_sync_token','');
         CREATE TABLE IF NOT EXISTS products (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -70,6 +75,10 @@ class InventoryApp:
         header.pack(fill="x")
         ttk.Label(header, text="RFInventorySystem", style="Title.TLabel").pack(side="left")
         ttk.Label(header, text="Redfinger code inventory • single-use tracking").pack(side="left", padx=18, pady=(7, 0))
+        self.sync_status = tk.StringVar(value="Google Sheets: not configured")
+        ttk.Label(header, textvariable=self.sync_status).pack(side="right", padx=8)
+        ttk.Button(header, text="Sync now", command=lambda: self.sync_to_sheets(show_result=True)).pack(side="right", padx=4)
+        ttk.Button(header, text="Google Sheets setup", command=self.configure_sheets).pack(side="right", padx=4)
 
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill="both", expand=True, padx=14, pady=(0, 12))
@@ -82,6 +91,7 @@ class InventoryApp:
         self.build_products_tab()
         self.build_codes_tab()
         self.build_summary_tab()
+        self.update_sync_status()
 
     def build_products_tab(self):
         form = ttk.LabelFrame(self.products_tab, text="Product plan details", padding=10)
@@ -188,6 +198,7 @@ class InventoryApp:
             self.db.commit()
             self.cancel_product_edit()
             self.refresh_all()
+            self.sync_to_sheets()
         except (ValueError, sqlite3.IntegrityError):
             messagebox.showerror(
                 "Invalid product",
@@ -238,6 +249,7 @@ class InventoryApp:
             self.c_code.set("")
             self.c_cost.set("")
             self.refresh_all()
+            self.sync_to_sheets()
         except ValueError:
             messagebox.showerror("Invalid code", "Enter a unique code, choose a product, and use a valid non-negative cost.")
         except sqlite3.IntegrityError:
@@ -260,6 +272,7 @@ class InventoryApp:
             self.db.execute("INSERT INTO settings(key,value) VALUES('idr_to_php',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(value),))
             self.db.commit()
             self.refresh_all()
+            self.sync_to_sheets()
             messagebox.showinfo("Exchange rate saved", "New codes will use the updated rate. Existing code costs stay locked.")
         except ValueError:
             messagebox.showerror("Invalid rate", "Enter a positive number.")
@@ -281,6 +294,7 @@ class InventoryApp:
         self.db.execute("UPDATE codes SET status=?,date_claimed=? WHERE id=?", (status, claimed, code_id))
         self.db.commit()
         self.refresh_all()
+        self.sync_to_sheets()
 
     def delete_code(self):
         selected = self.codes_tree.selection()
@@ -292,6 +306,7 @@ class InventoryApp:
         self.db.execute("DELETE FROM codes WHERE id=?", (int(selected[0]),))
         self.db.commit()
         self.refresh_all()
+        self.sync_to_sheets()
 
     def refresh_all(self):
         self.refresh_products()
@@ -338,6 +353,127 @@ class InventoryApp:
             self.codes_tree.insert("", "end", iid=str(c["id"]), values=(
                 i, c["code"], c["name"], c["type"], c["days"], f'{c["cost_idr"]:,.2f}',
                 f'₱{c["cost_php"]:,.2f}', c["status"], c["date_claimed"] or ""))
+
+    def setting(self, key, default=""):
+        row = self.db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+        return row["value"] if row else default
+
+    def set_setting(self, key, value):
+        self.db.execute(
+            "INSERT INTO settings(key,value) VALUES(?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value),
+        )
+        self.db.commit()
+
+    def update_sync_status(self, message=None):
+        if message:
+            self.sync_status.set(message)
+            return
+        if self.setting("sheets_web_app_url").strip() and self.setting("sheets_sync_token").strip():
+            self.sync_status.set("Google Sheets: ready")
+        else:
+            self.sync_status.set("Google Sheets: not configured")
+
+    def configure_sheets(self):
+        url = simpledialog.askstring(
+            "Google Sheets setup",
+            "Paste the deployed Google Apps Script Web App URL:",
+            initialvalue=self.setting("sheets_web_app_url"),
+            parent=self.root,
+        )
+        if url is None:
+            return
+        token = simpledialog.askstring(
+            "Google Sheets setup",
+            "Enter the shared secret you set in google_apps_script.gs:",
+            initialvalue=self.setting("sheets_sync_token"),
+            show="*",
+            parent=self.root,
+        )
+        if token is None:
+            return
+        url = url.strip()
+        token = token.strip()
+        if url and not url.startswith("https://script.google.com/"):
+            messagebox.showerror("Invalid URL", "Use the deployed Google Apps Script URL that starts with https://script.google.com/")
+            return
+        self.set_setting("sheets_web_app_url", url)
+        self.set_setting("sheets_sync_token", token)
+        self.update_sync_status()
+        if url and token:
+            self.sync_to_sheets(show_result=True)
+
+    def build_sync_payload(self):
+        products = self.db.execute("""
+            SELECT p.*,
+              (SELECT COUNT(*) FROM codes c WHERE c.product_id=p.id AND c.status='Available') AS stock,
+              (SELECT COUNT(*) FROM codes c WHERE c.product_id=p.id AND c.status='Claimed') AS sold,
+              (SELECT COALESCE(SUM(p2.selling_price),0) FROM codes c2
+                 JOIN products p2 ON p2.id=c2.product_id
+                 WHERE c2.product_id=p.id AND c2.status='Claimed') AS sold_amount
+            FROM products p ORDER BY p.id
+        """).fetchall()
+        codes = self.db.execute("""
+            SELECT c.*,p.name AS product_name,p.type AS product_type,p.days AS product_days,
+                   p.selling_price AS selling_price
+            FROM codes c JOIN products p ON p.id=c.product_id ORDER BY c.id
+        """).fetchall()
+        revenue = sum(float(c["selling_price"]) for c in codes if c["status"] == "Claimed")
+        cost = sum(float(c["cost_php"]) for c in codes if c["status"] == "Claimed")
+        return {
+            "token": self.setting("sheets_sync_token"),
+            "generatedAt": datetime.now().isoformat(timespec="seconds"),
+            "exchangeRate": self.rate(),
+            "products": [{
+                "id": p["id"], "name": p["name"], "type": p["type"], "days": p["days"],
+                "availableStock": p["stock"], "costIDR": p["cost_idr"],
+                "costPHP": p["cost_idr"] * self.rate(), "sellingPricePHP": p["selling_price"],
+                "soldQuantity": p["sold"], "soldAmountPHP": p["sold_amount"],
+            } for p in products],
+            "codes": [{
+                "id": c["id"], "code": c["code"], "productName": c["product_name"],
+                "productType": c["product_type"], "days": c["product_days"],
+                "status": c["status"], "dateClaimed": c["date_claimed"] or "",
+                "costIDR": c["cost_idr"], "lockedCostPHP": c["cost_php"],
+                "sellingPricePHP": c["selling_price"],
+            } for c in codes],
+            "summary": {
+                "revenuePHP": revenue, "costPHP": cost, "profitPHP": revenue - cost,
+            },
+        }
+
+    def sync_to_sheets(self, show_result=False):
+        url = self.setting("sheets_web_app_url").strip()
+        token = self.setting("sheets_sync_token").strip()
+        if not url or not token:
+            self.update_sync_status()
+            if show_result:
+                messagebox.showinfo(
+                    "Google Sheets not configured",
+                    "First paste the deployed Apps Script Web App URL and shared secret in Google Sheets setup.",
+                )
+            return
+        try:
+            payload = json.dumps(self.build_sync_payload()).encode("utf-8")
+            request = Request(
+                url,
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlopen(request, timeout=20) as response:
+                result_text = response.read().decode("utf-8", errors="replace")
+            result = json.loads(result_text)
+            if not result.get("ok"):
+                raise RuntimeError(result.get("error", "The Apps Script endpoint rejected the sync."))
+            self.update_sync_status("Google Sheets: synced")
+            if show_result:
+                messagebox.showinfo("Sync complete", "Inventory was synced to Google Sheets.")
+        except (URLError, HTTPError, TimeoutError, OSError, ValueError, RuntimeError) as exc:
+            self.update_sync_status("Google Sheets: sync failed")
+            if show_result:
+                messagebox.showerror("Google Sheets sync failed", str(exc))
 
     def close(self):
         self.db.close()
