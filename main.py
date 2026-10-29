@@ -59,16 +59,70 @@ class InventoryApp:
         return float(row["value"]) if row else DEFAULT_RATE
 
     def style(self):
+        self.colors = {
+            "background": "#F3F6FB",
+            "surface": "#FFFFFF",
+            "primary": "#2563EB",
+            "primary_active": "#1D4ED8",
+            "accent": "#0F766E",
+            "text": "#172033",
+            "muted": "#64748B",
+            "border": "#D9E2EF",
+            "table_alt": "#F5F8FC",
+            "selected": "#DBEAFE",
+            "selected_text": "#1E3A8A",
+        }
+        self.root.configure(bg=self.colors["background"])
         style = ttk.Style()
         try:
             style.theme_use("clam")
         except tk.TclError:
             pass
-        style.configure("Treeview", rowheight=27, font=("Segoe UI", 10))
-        style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"))
-        style.configure("TButton", padding=(9, 6))
-        style.configure("Title.TLabel", font=("Segoe UI", 18, "bold"))
-        style.configure("Metric.TLabel", font=("Segoe UI", 13, "bold"))
+
+        style.configure(".", font=("Segoe UI", 10), foreground=self.colors["text"])
+        style.configure("TFrame", background=self.colors["background"])
+        style.configure("TLabel", background=self.colors["background"], foreground=self.colors["text"])
+        style.configure("Title.TLabel", background=self.colors["background"],
+                        foreground=self.colors["text"], font=("Segoe UI", 20, "bold"))
+        style.configure("Subtitle.TLabel", background=self.colors["background"],
+                        foreground=self.colors["muted"], font=("Segoe UI", 10))
+        style.configure("Metric.TLabel", background=self.colors["surface"],
+                        foreground=self.colors["primary"], font=("Segoe UI", 18, "bold"))
+        style.configure("TLabelframe", background=self.colors["surface"],
+                        bordercolor=self.colors["border"], relief="solid", borderwidth=1)
+        style.configure("TLabelframe.Label", background=self.colors["surface"],
+                        foreground=self.colors["primary"], font=("Segoe UI", 10, "bold"))
+        style.configure("TButton", padding=(11, 7), background=self.colors["primary"],
+                        foreground="#FFFFFF", borderwidth=0, focusthickness=0)
+        style.map("TButton",
+                  background=[("pressed", self.colors["primary_active"]),
+                              ("active", self.colors["primary_active"])],
+                  foreground=[("disabled", "#94A3B8"), ("!disabled", "#FFFFFF")])
+        style.configure("TEntry", padding=6, fieldbackground="#FFFFFF",
+                        bordercolor=self.colors["border"], lightcolor=self.colors["border"],
+                        darkcolor=self.colors["border"])
+        style.configure("TCombobox", padding=6, fieldbackground="#FFFFFF",
+                        background="#FFFFFF", bordercolor=self.colors["border"], arrowsize=13)
+        style.map("TCombobox", fieldbackground=[("readonly", "#FFFFFF")],
+                  foreground=[("readonly", self.colors["text"])])
+        style.configure("TNotebook", background=self.colors["background"], borderwidth=0,
+                        tabmargins=(2, 5, 2, 0))
+        style.configure("TNotebook.Tab", padding=(16, 9), background="#E5ECF5",
+                        foreground=self.colors["muted"], font=("Segoe UI", 10, "bold"))
+        style.map("TNotebook.Tab",
+                  background=[("selected", self.colors["primary"]), ("active", "#DCE7F5")],
+                  foreground=[("selected", "#FFFFFF"), ("active", self.colors["text"])])
+        style.configure("Treeview", rowheight=32, font=("Segoe UI", 10),
+                        background=self.colors["surface"], fieldbackground=self.colors["surface"],
+                        foreground=self.colors["text"], bordercolor=self.colors["border"],
+                        borderwidth=0)
+        style.configure("Treeview.Heading", font=("Segoe UI", 10, "bold"),
+                        background="#E8EEF7", foreground="#334155", padding=(8, 10),
+                        relief="flat")
+        style.map("Treeview",
+                  background=[("selected", self.colors["selected"])],
+                  foreground=[("selected", self.colors["selected_text"])])
+        style.map("Treeview.Heading", background=[("active", "#DCE7F5")])
 
     def build_ui(self):
         header = ttk.Frame(self.root, padding=(16, 12))
@@ -116,6 +170,8 @@ class InventoryApp:
         self.editing_product_id = None
         cols = ("name", "type", "days", "stock", "cost_idr", "cost_php", "price", "sold_qty", "sold_amount", "sold_cost", "sold_profit")
         self.products_tree = ttk.Treeview(self.products_tab, columns=cols, show="headings")
+        self.products_tree.tag_configure("odd", background=self.colors["surface"])
+        self.products_tree.tag_configure("even", background=self.colors["table_alt"])
         labels = ("Name", "Type", "Days", "Available stock", "Default cost IDR", "Default cost PHP", "Selling price", "Sold qty", "Sold amount", "Sold cost PHP", "Profit PHP")
         widths = (160, 90, 55, 95, 105, 105, 105, 65, 110, 110, 110)
         for col, label, width in zip(cols, labels, widths):
@@ -159,6 +215,8 @@ class InventoryApp:
 
         cols = ("no", "code", "name", "type", "days", "cost_idr", "cost_php", "sold_price_php", "status", "date_claimed")
         self.codes_tree = ttk.Treeview(self.codes_tab, columns=cols, show="headings")
+        self.codes_tree.tag_configure("odd", background=self.colors["surface"])
+        self.codes_tree.tag_configure("even", background=self.colors["table_alt"])
         labels = ("No", "Code", "Name", "Type", "Days", "Cost IDR", "Cost PHP", "Sold price PHP", "Availability", "Date claimed")
         widths = (50, 260, 160, 100, 60, 100, 115, 125, 110, 110)
         for col, label, width in zip(cols, labels, widths):
@@ -371,8 +429,8 @@ class InventoryApp:
           (SELECT COALESCE(SUM(c.cost_php),0) FROM codes c WHERE c.product_id=p.id AND c.status='Claimed') sold_cost
         FROM products p ORDER BY p.id
         """).fetchall()
-        for p in rows:
-            self.products_tree.insert("", "end", iid=str(p["id"]), values=(
+        for index, p in enumerate(rows):
+            self.products_tree.insert("", "end", iid=str(p["id"]), tags=("even" if index % 2 else "odd",), values=(
                 p["name"], p["type"], p["days"], p["stock"], f'{p["cost_idr"]:,.2f}',
                 f'₱{p["cost_idr"]*self.rate():,.2f}', f'₱{p["selling_price"]:,.2f}',
                 p["sold"], f'₱{p["sold"]*p["selling_price"]:,.2f}', f'₱{p["sold_cost"]:,.2f}',
@@ -390,9 +448,9 @@ class InventoryApp:
         rows = self.db.execute("""
         SELECT c.*,p.name,p.type,p.days,p.selling_price FROM codes c JOIN products p ON p.id=c.product_id ORDER BY c.id
         """).fetchall()
-        for i, c in enumerate(rows, 1):
-            self.codes_tree.insert("", "end", iid=str(c["id"]), values=(
-                i, c["code"], c["name"], c["type"], c["days"], f'{c["cost_idr"]:,.2f}',
+        for index, c in enumerate(rows, 1):
+            self.codes_tree.insert("", "end", iid=str(c["id"]), tags=("even" if index % 2 == 0 else "odd",), values=(
+                index, c["code"], c["name"], c["type"], c["days"], f'{c["cost_idr"]:,.2f}',
                 f'₱{c["cost_php"]:,.2f}', f'₱{c["selling_price"]:,.2f}',
                 c["status"], c["date_claimed"] or ""))
 
