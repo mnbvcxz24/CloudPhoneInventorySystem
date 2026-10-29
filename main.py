@@ -1,15 +1,9 @@
 import sqlite3
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox
 from datetime import date
 from pathlib import Path
 
-try:
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment
-    from openpyxl.utils import get_column_letter
-except ImportError:
-    Workbook = None
 
 APP_NAME = "RFInventorySystem"
 DB_PATH = Path(__file__).with_name("rf_inventory.db")
@@ -76,7 +70,6 @@ class InventoryApp:
         header.pack(fill="x")
         ttk.Label(header, text="RFInventorySystem", style="Title.TLabel").pack(side="left")
         ttk.Label(header, text="Redfinger code inventory • single-use tracking").pack(side="left", padx=18, pady=(7, 0))
-        ttk.Button(header, text="Export to Excel", command=self.export_excel).pack(side="right")
 
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill="both", expand=True, padx=14, pady=(0, 12))
@@ -91,7 +84,7 @@ class InventoryApp:
         self.build_summary_tab()
 
     def build_products_tab(self):
-        form = ttk.LabelFrame(self.products_tab, text="Add product plan", padding=10)
+        form = ttk.LabelFrame(self.products_tab, text="Product plan details", padding=10)
         form.pack(fill="x", pady=(0, 10))
         self.p_name = tk.StringVar()
         self.p_type = tk.StringVar(value="Standard")
@@ -100,10 +93,17 @@ class InventoryApp:
         self.p_price = tk.StringVar(value="0")
         fields = [("Name", self.p_name, 18), ("Type", self.p_type, 14), ("Days", self.p_days, 8),
                   ("Cost / code (IDR)", self.p_cost, 16), ("Selling price / code (PHP)", self.p_price, 18)]
+        self.p_name_entry = None
         for i, (label, var, width) in enumerate(fields):
             ttk.Label(form, text=label).grid(row=0, column=i, sticky="w", padx=4)
-            ttk.Entry(form, textvariable=var, width=width).grid(row=1, column=i, padx=4, pady=4)
-        ttk.Button(form, text="Add plan", command=self.add_product).grid(row=1, column=len(fields), padx=8)
+            entry = ttk.Entry(form, textvariable=var, width=width)
+            entry.grid(row=1, column=i, padx=4, pady=4)
+            if i == 0:
+                self.p_name_entry = entry
+        self.product_save_btn = ttk.Button(form, text="Add plan", command=self.save_product)
+        self.product_save_btn.grid(row=1, column=len(fields), padx=8)
+        ttk.Button(form, text="Edit selected", command=self.edit_selected_product).grid(row=1, column=len(fields) + 1, padx=4)
+        self.editing_product_id = None
         cols = ("name", "type", "days", "stock", "cost_idr", "cost_php", "price", "sold_qty", "sold_amount")
         self.products_tree = ttk.Treeview(self.products_tab, columns=cols, show="headings")
         labels = ("Name", "Type", "Days", "Available stock", "Cost IDR", "Cost PHP", "Selling price", "Sold qty", "Sold amount")
@@ -166,7 +166,7 @@ class InventoryApp:
         ttk.Label(self.summary_tab, text="Only codes marked Claimed count as sales. Reserved codes are not included in revenue or profit.").pack(anchor="w", padx=6, pady=8)
         ttk.Button(self.summary_tab, text="Refresh totals", command=self.refresh_all).pack(anchor="w", padx=6, pady=8)
 
-    def add_product(self):
+    def save_product(self):
         try:
             name = self.p_name.get().strip()
             typ = self.p_type.get().strip() or "Standard"
@@ -175,13 +175,51 @@ class InventoryApp:
             price = float(self.p_price.get())
             if not name or days < 0 or cost < 0 or price < 0:
                 raise ValueError
-            self.db.execute("INSERT INTO products(name,type,days,cost_idr,selling_price) VALUES(?,?,?,?,?)",
-                            (name, typ, days, cost, price))
+            if self.editing_product_id is None:
+                self.db.execute(
+                    "INSERT INTO products(name,type,days,cost_idr,selling_price) VALUES(?,?,?,?,?)",
+                    (name, typ, days, cost, price),
+                )
+            else:
+                self.db.execute(
+                    "UPDATE products SET name=?,type=?,days=?,cost_idr=?,selling_price=? WHERE id=?",
+                    (name, typ, days, cost, price, self.editing_product_id),
+                )
             self.db.commit()
-            self.p_name.set("")
+            self.cancel_product_edit()
             self.refresh_all()
         except (ValueError, sqlite3.IntegrityError):
-            messagebox.showerror("Invalid product", "Enter a name, whole number of days, and valid non-negative costs/prices.")
+            messagebox.showerror(
+                "Invalid product",
+                "Enter a name, whole number of days, and valid non-negative costs/prices.",
+            )
+
+    def edit_selected_product(self):
+        selected = self.products_tree.selection()
+        if not selected:
+            messagebox.showwarning("Select a product", "Choose a product plan from the list first.")
+            return
+        product_id = int(selected[0])
+        product = self.db.execute("SELECT * FROM products WHERE id=?", (product_id,)).fetchone()
+        if not product:
+            return
+        self.editing_product_id = product_id
+        self.p_name.set(product["name"])
+        self.p_type.set(product["type"])
+        self.p_days.set(str(product["days"]))
+        self.p_cost.set(str(product["cost_idr"]))
+        self.p_price.set(str(product["selling_price"]))
+        self.product_save_btn.configure(text="Save changes")
+        self.p_name_entry.focus_set()
+
+    def cancel_product_edit(self):
+        self.editing_product_id = None
+        self.p_name.set("")
+        self.p_type.set("Standard")
+        self.p_days.set("30")
+        self.p_cost.set("0")
+        self.p_price.set("0")
+        self.product_save_btn.configure(text="Add plan")
 
     def add_code(self):
         try:
@@ -300,60 +338,6 @@ class InventoryApp:
             self.codes_tree.insert("", "end", iid=str(c["id"]), values=(
                 i, c["code"], c["name"], c["type"], c["days"], f'{c["cost_idr"]:,.2f}',
                 f'₱{c["cost_php"]:,.2f}', c["status"], c["date_claimed"] or ""))
-
-    def export_excel(self):
-        if Workbook is None:
-            messagebox.showerror("Missing dependency", "Install dependencies with: pip install -r requirements.txt")
-            return
-        path = filedialog.asksaveasfilename(title="Export inventory", defaultextension=".xlsx",
-            initialfile="RFInventorySystem.xlsx", filetypes=[("Excel workbook", "*.xlsx")])
-        if not path:
-            return
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Product & Sales"
-        ws.append(["Name", "Type", "Days", "Stock", "Cost in IDR", "Cost in PHP", "Selling Price", "Sold Qty", "Sold Amount"])
-        products = self.db.execute("SELECT * FROM products ORDER BY id").fetchall()
-        for p in products:
-            codes = self.db.execute("SELECT status,cost_php FROM codes WHERE product_id=?", (p["id"],)).fetchall()
-            available = sum(c["status"] == "Available" for c in codes)
-            sold = sum(c["status"] == "Claimed" for c in codes)
-            ws.append([p["name"], p["type"], p["days"], available, p["cost_idr"], p["cost_idr"]*self.rate(),
-                       p["selling_price"], sold, sold*p["selling_price"]])
-        cl = wb.create_sheet("Code List")
-        cl.append(["No", "Code", "Name", "Type", "Days", "Availability", "Date Claimed", "Cost in IDR", "Locked Cost in PHP"])
-        codes = self.db.execute("""SELECT c.*,p.name,p.type,p.days FROM codes c JOIN products p ON p.id=c.product_id ORDER BY c.id""").fetchall()
-        for i, c in enumerate(codes, 1):
-            cl.append([i, c["code"], c["name"], c["type"], c["days"], c["status"], c["date_claimed"] or "",
-                       c["cost_idr"], c["cost_php"]])
-        sm = wb.create_sheet("Profit Summary")
-        claimed = [c for c in codes if c["status"] == "Claimed"]
-        revenue = sum(float(self.db.execute("SELECT selling_price FROM products WHERE id=(SELECT product_id FROM codes WHERE id=?)", (c["id"],)).fetchone()[0]) for c in claimed)
-        cost = sum(c["cost_php"] for c in claimed)
-        sm.append(["Metric", "Amount (PHP)"])
-        sm.append(["Revenue", revenue])
-        sm.append(["Cost of claimed codes", cost])
-        sm.append(["Profit", revenue-cost])
-        for sheet in wb.worksheets:
-            sheet.freeze_panes = "A2"
-            sheet.auto_filter.ref = sheet.dimensions
-            for cell in sheet[1]:
-                cell.font = Font(bold=True, color="FFFFFF")
-                cell.fill = PatternFill("solid", fgColor="183153")
-                cell.alignment = Alignment(horizontal="center")
-            for col in sheet.columns:
-                letter = get_column_letter(col[0].column)
-                width = min(max(max(len(str(cell.value or "")) for cell in col) + 2, 12), 32)
-                sheet.column_dimensions[letter].width = width
-            for row in sheet.iter_rows(min_row=2):
-                for cell in row:
-                    if isinstance(cell.value, (int, float)) and cell.column > 1:
-                        cell.number_format = '#,##0.00'
-        try:
-            wb.save(path)
-            messagebox.showinfo("Export complete", f"Workbook saved to:\n{path}")
-        except OSError as exc:
-            messagebox.showerror("Export failed", str(exc))
 
     def close(self):
         self.db.close()
