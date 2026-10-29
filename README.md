@@ -11,10 +11,10 @@ A small Windows desktop app for tracking Redfinger plans and single-use redempti
 2. Double-click `run.bat`.
 3. Add product plans in **Product & Sales**.
 4. To change a plan, select it in the table and click **Edit selected**. Update the fields, then click **Save changes**.
-5. Add each purchased code in **Code List**. The PHP cost is locked at the current IDR-to-PHP rate when the code is added.
+5. Add each purchased code in **Code List**. Enter a cost override in IDR when that code's actual purchase price differs from the product default. To correct it later, select the code and click **Edit cost (IDR)**.
 6. Change a code status to **Reserved**, **Claimed**, or **Expired** as needed. A code marked **Claimed** records the date and counts as a sale.
 
-Default exchange rate: `0.0035375 PHP per IDR`. Update it in the Code List tab. Updating the rate only affects newly added codes and the live product cost display; historical per-code PHP costs remain unchanged.
+Default exchange rate: `0.0035375 PHP per IDR`. Update it in the Code List tab. New codes use the current rate to calculate their PHP cost. Each code keeps its recorded PHP cost when the rate changes; editing a code's IDR cost recalculates that code's PHP cost using the current rate.
 
 ## Google Sheets setup
 1. Open the Google Sheet you want to use.
@@ -33,7 +33,8 @@ If your Google Workspace administrator blocks public Web App deployments, the en
 ## Status behavior
 - **Available**: counted in stock.
 - **Reserved**: held, not counted as available stock or sales.
-- **Claimed**: treated as sold and included in revenue, cost, and profit.
+- **Claimed**: treated as sold and included in revenue, cost, and profit. Profit is calculated per claimed code using its own recorded PHP cost, not the product's default cost.
+- In **Product & Sales**, sold cost and profit are totals for the claimed codes assigned to each product. The product's default cost is only a suggested cost for newly added codes.
 - **Expired**: excluded from available stock and sales.
 
 Codes must be unique. Avoid deleting a code after it has been claimed unless you intend to remove it from historical totals.
