@@ -157,10 +157,10 @@ class InventoryApp:
         ttk.Button(actions, text="Edit cost (IDR)", command=self.edit_selected_code_cost).pack(side="left", padx=8)
         ttk.Button(actions, text="Delete selected", command=self.delete_code).pack(side="left", padx=8)
 
-        cols = ("no", "code", "name", "type", "days", "cost_idr", "cost_php", "status", "date_claimed")
+        cols = ("no", "code", "name", "type", "days", "cost_idr", "cost_php", "sold_price_php", "status", "date_claimed")
         self.codes_tree = ttk.Treeview(self.codes_tab, columns=cols, show="headings")
-        labels = ("No", "Code", "Name", "Type", "Days", "Cost IDR", "Cost PHP", "Availability", "Date claimed")
-        widths = (50, 260, 160, 100, 60, 100, 115, 110, 110)
+        labels = ("No", "Code", "Name", "Type", "Days", "Cost IDR", "Cost PHP", "Sold price PHP", "Availability", "Date claimed")
+        widths = (50, 260, 160, 100, 60, 100, 115, 125, 110, 110)
         for col, label, width in zip(cols, labels, widths):
             self.codes_tree.heading(col, text=label)
             self.codes_tree.column(col, width=width, anchor="w" if col in ("code", "name", "type", "status", "date_claimed") else "e")
@@ -388,12 +388,13 @@ class InventoryApp:
         for item in self.codes_tree.get_children():
             self.codes_tree.delete(item)
         rows = self.db.execute("""
-        SELECT c.*,p.name,p.type,p.days FROM codes c JOIN products p ON p.id=c.product_id ORDER BY c.id
+        SELECT c.*,p.name,p.type,p.days,p.selling_price FROM codes c JOIN products p ON p.id=c.product_id ORDER BY c.id
         """).fetchall()
         for i, c in enumerate(rows, 1):
             self.codes_tree.insert("", "end", iid=str(c["id"]), values=(
                 i, c["code"], c["name"], c["type"], c["days"], f'{c["cost_idr"]:,.2f}',
-                f'₱{c["cost_php"]:,.2f}', c["status"], c["date_claimed"] or ""))
+                f'₱{c["cost_php"]:,.2f}', f'₱{c["selling_price"]:,.2f}',
+                c["status"], c["date_claimed"] or ""))
 
     def setting(self, key, default=""):
         row = self.db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
