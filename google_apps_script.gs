@@ -28,8 +28,8 @@ function doPost(e) {
     const syncedAt = payload.generatedAt || new Date().toISOString();
 
     replaceSheet(ss, "Product & Sales",
-      ["Product ID", "Name", "Type", "Days", "Available Stock", "Cost / Code (IDR)", "Cost / Code (PHP)", "Selling Price (PHP)", "Sold Qty", "Sold Amount (PHP)"],
-      products.map(p => [p.id, p.name, p.type, p.days, p.availableStock, p.costIDR, p.costPHP, p.sellingPricePHP, p.soldQuantity, p.soldAmountPHP]),
+      ["Product ID", "Name", "Type", "Days", "Available Stock", "Default Cost (IDR)", "Default Cost (PHP)", "Selling Price (PHP)", "Sold Qty", "Sold Amount (PHP)", "Sold Cost (PHP)", "Profit (PHP)"],
+      products.map(p => [p.id, p.name, p.type, p.days, p.availableStock, p.costIDR, p.costPHP, p.sellingPricePHP, p.soldQuantity, p.soldAmountPHP, p.soldCostPHP, p.soldProfitPHP]),
       syncedAt);
 
     replaceSheet(ss, "Code List",
@@ -41,7 +41,8 @@ function doPost(e) {
       ["Metric", "Amount (PHP)"],
       [
         ["Revenue", Number(summary.revenuePHP || 0)],
-        ["Cost of claimed codes", Number(summary.costPHP || 0)],
+        ["Cost of claimed codes (IDR)", Number(summary.costIDR || 0)],
+        ["Cost of claimed codes (PHP)", Number(summary.costPHP || 0)],
         ["Profit", Number(summary.profitPHP || 0)],
         ["IDR to PHP rate", Number(payload.exchangeRate || 0)],
         ["Last synced", syncedAt]
