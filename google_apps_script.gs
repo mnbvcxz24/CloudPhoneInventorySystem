@@ -65,7 +65,9 @@ function replaceSheet(ss, name, headers, rows, syncedAt) {
     .setFontWeight("bold")
     .setBackground("#183153")
     .setFontColor("#ffffff");
-  sheet.getRange(1, 1, values.length, headers.length).createFilterIfAbsent();
+  const existingFilter = sheet.getFilter();
+  if (existingFilter) existingFilter.remove();
+  sheet.getRange(1, 1, values.length, headers.length).createFilter();
   sheet.autoResizeColumns(1, headers.length);
   sheet.getRange(1, headers.length + 2).setValue("Last synced");
   sheet.getRange(2, headers.length + 2).setValue(syncedAt);
