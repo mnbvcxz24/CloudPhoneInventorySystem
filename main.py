@@ -274,10 +274,19 @@ class InventoryApp:
             if value <= 0:
                 raise ValueError
             self.db.execute("INSERT INTO settings(key,value) VALUES('idr_to_php',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(value),))
+            # Recalculate PHP costs for every code that has not been claimed.
+            # Claimed codes retain their recorded PHP cost so historical profit stays accurate.
+            self.db.execute(
+                "UPDATE codes SET cost_php=cost_idr*? WHERE status!='Claimed'",
+                (value,),
+            )
             self.db.commit()
             self.refresh_all()
             self.sync_to_sheets()
-            messagebox.showinfo("Exchange rate saved", "New codes will use the updated rate. Existing code costs stay locked.")
+            messagebox.showinfo(
+                "Exchange rate saved",
+                "PHP costs were updated for unclaimed codes. Claimed code costs remain locked to preserve actual profit.",
+            )
         except ValueError:
             messagebox.showerror("Invalid rate", "Enter a positive number.")
 
