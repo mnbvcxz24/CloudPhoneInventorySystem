@@ -60,17 +60,19 @@ class InventoryApp:
 
     def style(self):
         self.colors = {
-            "background": "#F3F6FB",
+            "background": "#F4F7FB",
             "surface": "#FFFFFF",
-            "primary": "#2563EB",
-            "primary_active": "#1D4ED8",
-            "accent": "#0F766E",
-            "text": "#172033",
-            "muted": "#64748B",
-            "border": "#D9E2EF",
-            "table_alt": "#F5F8FC",
-            "selected": "#DBEAFE",
-            "selected_text": "#1E3A8A",
+            "sidebar": "#111C36",
+            "sidebar_hover": "#1D2A49",
+            "primary": "#4263EB",
+            "primary_active": "#3451CC",
+            "accent": "#0F9F8F",
+            "text": "#18243A",
+            "muted": "#718096",
+            "border": "#E1E8F0",
+            "table_alt": "#F7F9FC",
+            "selected": "#DCE7FF",
+            "selected_text": "#233F99",
         }
         self.root.configure(bg=self.colors["background"])
         style = ttk.Style()
@@ -127,27 +129,111 @@ class InventoryApp:
         style.map("Treeview.Heading", background=[("active", "#DCE7F5")])
 
     def build_ui(self):
-        header = ttk.Frame(self.root, padding=(16, 12))
-        header.pack(fill="x")
-        ttk.Label(header, text="RFInventorySystem", style="Title.TLabel").pack(side="left")
-        ttk.Label(header, text="Redfinger code inventory • single-use tracking").pack(side="left", padx=18, pady=(7, 0))
-        self.sync_status = tk.StringVar(value="Google Sheets: not configured")
-        ttk.Label(header, textvariable=self.sync_status).pack(side="right", padx=8)
-        ttk.Button(header, text="Sync now", command=lambda: self.sync_to_sheets(show_result=True)).pack(side="right", padx=4)
-        ttk.Button(header, text="Google Sheets setup", command=self.configure_sheets).pack(side="right", padx=4)
+        self.root.configure(bg=self.colors["background"])
 
-        self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill="both", expand=True, padx=14, pady=(0, 12))
-        self.products_tab = ttk.Frame(self.notebook, padding=12)
-        self.codes_tab = ttk.Frame(self.notebook, padding=12)
-        self.summary_tab = ttk.Frame(self.notebook, padding=12)
-        self.notebook.add(self.products_tab, text="Product & Sales")
-        self.notebook.add(self.codes_tab, text="Code List")
-        self.notebook.add(self.summary_tab, text="Profit Summary")
+        shell = tk.Frame(self.root, bg=self.colors["background"])
+        shell.pack(fill="both", expand=True)
+
+        sidebar = tk.Frame(shell, bg=self.colors["sidebar"], width=220)
+        sidebar.pack(side="left", fill="y")
+        sidebar.pack_propagate(False)
+
+        brand = tk.Frame(sidebar, bg=self.colors["sidebar"])
+        brand.pack(fill="x", padx=20, pady=(25, 28))
+        mark = tk.Label(brand, text="RF", bg=self.colors["primary"], fg="#FFFFFF",
+                        font=("Segoe UI", 15, "bold"), width=3, height=1, pady=7)
+        mark.pack(anchor="w", pady=(0, 12))
+        tk.Label(brand, text="RFInventory", bg=self.colors["sidebar"], fg="#FFFFFF",
+                 font=("Segoe UI", 15, "bold")).pack(anchor="w")
+        tk.Label(brand, text="INVENTORY WORKSPACE", bg=self.colors["sidebar"], fg="#9EACCA",
+                 font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(4, 0))
+
+        tk.Label(sidebar, text="WORKSPACE", bg=self.colors["sidebar"], fg="#8391AF",
+                 font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=22, pady=(0, 10))
+
+        self.nav_buttons = {}
+        nav_items = [
+            ("products", "▦", "Product & Sales"),
+            ("codes", "▤", "Code List"),
+            ("summary", "◫", "Profit Summary"),
+        ]
+        for key, symbol, label in nav_items:
+            button = tk.Button(
+                sidebar, text=f"  {symbol}     {label}", anchor="w",
+                command=lambda page=key: self.show_page(page),
+                bg=self.colors["sidebar"], fg="#C5CEE0", activebackground=self.colors["sidebar_hover"],
+                activeforeground="#FFFFFF", relief="flat", bd=0, cursor="hand2",
+                font=("Segoe UI", 10, "bold"), padx=14, pady=13,
+                highlightthickness=0,
+            )
+            button.pack(fill="x", padx=10, pady=3)
+            self.nav_buttons[key] = button
+
+        sidebar_footer = tk.Frame(sidebar, bg=self.colors["sidebar"])
+        sidebar_footer.pack(side="bottom", fill="x", padx=20, pady=20)
+        tk.Frame(sidebar_footer, bg="#34415F", height=1).pack(fill="x", pady=(0, 12))
+        tk.Label(sidebar_footer, text="REDFINGER CODE SALES", bg=self.colors["sidebar"],
+                 fg="#9EACCA", font=("Segoe UI", 8, "bold")).pack(anchor="w")
+        tk.Label(sidebar_footer, text="Local inventory • Google Sheets sync", bg=self.colors["sidebar"],
+                 fg="#9EACCA", font=("Segoe UI", 8), wraplength=175, justify="left").pack(anchor="w", pady=(5, 0))
+
+        workspace = tk.Frame(shell, bg=self.colors["background"])
+        workspace.pack(side="left", fill="both", expand=True)
+
+        header = tk.Frame(workspace, bg=self.colors["surface"], height=82,
+                          highlightbackground=self.colors["border"], highlightthickness=1)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+
+        title_area = tk.Frame(header, bg=self.colors["surface"])
+        title_area.pack(side="left", fill="y", padx=25, pady=15)
+        self.page_title = tk.StringVar(value="Product & Sales")
+        self.page_subtitle = tk.StringVar(value="Manage plans, pricing, and sales performance.")
+        tk.Label(title_area, textvariable=self.page_title, bg=self.colors["surface"], fg=self.colors["text"],
+                 font=("Segoe UI", 17, "bold")).pack(anchor="w")
+        tk.Label(title_area, textvariable=self.page_subtitle, bg=self.colors["surface"], fg=self.colors["muted"],
+                 font=("Segoe UI", 9)).pack(anchor="w", pady=(3, 0))
+
+        header_actions = tk.Frame(header, bg=self.colors["surface"])
+        header_actions.pack(side="right", padx=20, pady=18)
+        self.sync_status = tk.StringVar(value="Google Sheets: not configured")
+        tk.Label(header_actions, textvariable=self.sync_status, bg=self.colors["surface"],
+                 fg=self.colors["muted"], font=("Segoe UI", 9)).pack(side="left", padx=(0, 12))
+        ttk.Button(header_actions, text="Google Sheets setup", command=self.configure_sheets).pack(side="left", padx=4)
+        ttk.Button(header_actions, text="Sync now", command=lambda: self.sync_to_sheets(show_result=True)).pack(side="left", padx=4)
+
+        self.page_host = tk.Frame(workspace, bg=self.colors["background"])
+        self.page_host.pack(fill="both", expand=True, padx=20, pady=18)
+
+        self.products_tab = ttk.Frame(self.page_host, padding=14)
+        self.codes_tab = ttk.Frame(self.page_host, padding=14)
+        self.summary_tab = ttk.Frame(self.page_host, padding=14)
+
         self.build_products_tab()
         self.build_codes_tab()
         self.build_summary_tab()
+        self.show_page("products")
         self.update_sync_status()
+
+    def show_page(self, page):
+        pages = {
+            "products": (self.products_tab, "Product & Sales", "Manage plans, pricing, and sales performance."),
+            "codes": (self.codes_tab, "Code List", "Track individual codes, availability, and purchase costs."),
+            "summary": (self.summary_tab, "Profit Summary", "Review revenue, claimed-code costs, and net profit."),
+        }
+        for frame, _, _ in pages.values():
+            frame.pack_forget()
+        frame, title, subtitle = pages[page]
+        frame.pack(fill="both", expand=True)
+        self.page_title.set(title)
+        self.page_subtitle.set(subtitle)
+        for key, button in self.nav_buttons.items():
+            active = key == page
+            button.configure(
+                bg=self.colors["primary"] if active else self.colors["sidebar"],
+                fg="#FFFFFF" if active else "#C5CEE0",
+                activebackground=self.colors["primary"] if active else self.colors["sidebar_hover"],
+            )
 
     def build_products_tab(self):
         form = ttk.LabelFrame(self.products_tab, text="Product plan details", padding=10)
