@@ -119,8 +119,8 @@ class InventoryApp:
         labels = ("Name", "Type", "Days", "Available stock", "Default cost IDR", "Default cost PHP", "Selling price", "Sold qty", "Sold amount", "Sold cost PHP", "Profit PHP")
         widths = (160, 90, 55, 95, 105, 105, 105, 65, 110, 110, 110)
         for col, label, width in zip(cols, labels, widths):
-            self.products_tree.heading(col, text=label)
-            self.products_tree.column(col, width=width, anchor="w" if col in ("name", "type") else "e")
+            self.products_tree.heading(col, text=label, anchor="center")
+            self.products_tree.column(col, width=width, anchor="center")
         self.products_tree.pack(fill="both", expand=True)
         product_scroll = ttk.Scrollbar(self.products_tab, orient="horizontal", command=self.products_tree.xview)
         product_scroll.pack(fill="x")
@@ -162,8 +162,8 @@ class InventoryApp:
         labels = ("No", "Code", "Name", "Type", "Days", "Cost IDR", "Cost PHP", "Sold price PHP", "Availability", "Date claimed")
         widths = (50, 260, 160, 100, 60, 100, 115, 125, 110, 110)
         for col, label, width in zip(cols, labels, widths):
-            self.codes_tree.heading(col, text=label)
-            self.codes_tree.column(col, width=width, anchor="w" if col in ("code", "name", "type", "status", "date_claimed") else "e")
+            self.codes_tree.heading(col, text=label, anchor="center")
+            self.codes_tree.column(col, width=width, anchor="center")
         self.codes_tree.pack(fill="both", expand=True)
         ttk.Label(self.codes_tab, text="Select a code and click Edit cost (IDR) to record its actual purchase price. Editing a cost recalculates that code's PHP cost using the current rate.").pack(anchor="w", pady=(8, 0))
 
