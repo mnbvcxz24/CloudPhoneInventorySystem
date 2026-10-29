@@ -122,6 +122,9 @@ class InventoryApp:
             self.products_tree.heading(col, text=label)
             self.products_tree.column(col, width=width, anchor="w" if col in ("name", "type") else "e")
         self.products_tree.pack(fill="both", expand=True)
+        product_scroll = ttk.Scrollbar(self.products_tab, orient="horizontal", command=self.products_tree.xview)
+        product_scroll.pack(fill="x")
+        self.products_tree.configure(xscrollcommand=product_scroll.set)
         ttk.Label(self.products_tab, text="Sold cost and profit use each claimed code's own recorded cost. Default cost is only used for newly added codes without an override.").pack(anchor="w", pady=(8, 0))
 
     def build_codes_tab(self):
