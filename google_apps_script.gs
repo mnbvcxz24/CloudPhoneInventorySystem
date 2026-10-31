@@ -1,5 +1,5 @@
 /**
- * RFInventorySystem -> Google Sheets sync endpoint.
+ * CloudPhoneInventorySystem -> Google Sheets sync endpoint.
  *
  * Attach this script to the existing Google Sheet:
  * Extensions > Apps Script.
@@ -28,23 +28,21 @@ function doPost(e) {
     const syncedAt = payload.generatedAt || new Date().toISOString();
 
     replaceSheet(ss, "Product & Sales",
-      ["Product ID", "Name", "Type", "Days", "Available Stock", "Default Cost (IDR)", "Default Cost (PHP)", "Selling Price (PHP)", "Sold Qty", "Sold Amount (PHP)", "Sold Cost (PHP)", "Profit (PHP)"],
-      products.map(p => [p.id, p.name, p.type, p.days, p.availableStock, p.costIDR, p.costPHP, p.sellingPricePHP, p.soldQuantity, p.soldAmountPHP, p.soldCostPHP, p.soldProfitPHP]),
+      ["Product ID", "Name", "Type", "Days", "Available Stock", "Default Cost (PHP)", "Selling Price (PHP)", "Sold Qty", "Sold Amount (PHP)", "Sold Cost (PHP)", "Profit (PHP)"],
+      products.map(p => [p.id, p.name, p.type, p.days, p.availableStock, p.costPHP, p.sellingPricePHP, p.soldQuantity, p.soldAmountPHP, p.soldCostPHP, p.soldProfitPHP]),
       syncedAt);
 
     replaceSheet(ss, "Code List",
-      ["Code ID", "Code", "Product", "Type", "Days", "Status", "Date Claimed", "Cost (IDR)", "Locked Cost (PHP)", "Selling Price (PHP)"],
-      codes.map(c => [c.id, c.code, c.productName, c.productType, c.days, c.status, c.dateClaimed, c.costIDR, c.lockedCostPHP, c.sellingPricePHP]),
+      ["Code ID", "Code", "Product", "Type", "Days", "Status", "Date Claimed", "Cost (PHP)", "Price (PHP)"],
+      codes.map(c => [c.id, c.code, c.productName, c.productType, c.days, c.status, c.dateClaimed, c.costPHP, c.sellingPricePHP]),
       syncedAt);
 
     replaceSheet(ss, "Profit Summary",
       ["Metric", "Amount (PHP)"],
       [
         ["Revenue", Number(summary.revenuePHP || 0)],
-        ["Cost of claimed codes (IDR)", Number(summary.costIDR || 0)],
         ["Cost of claimed codes (PHP)", Number(summary.costPHP || 0)],
         ["Profit", Number(summary.profitPHP || 0)],
-        ["IDR to PHP rate", Number(payload.exchangeRate || 0)],
         ["Last synced", syncedAt]
       ],
       syncedAt);
