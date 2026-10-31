@@ -58,13 +58,9 @@ class InventoryApp:
         code_columns = {row["name"] for row in self.db.execute("PRAGMA table_info(codes)")}
         if "cost_php" not in product_columns:
             self.db.execute("ALTER TABLE products ADD COLUMN cost_php REAL NOT NULL DEFAULT 0")
-            old_rate = self.db.execute("SELECT value FROM settings WHERE key='idr_to_php'").fetchone()
-            rate = float(old_rate["value"]) if old_rate else 0.0035375
-            self.db.execute("UPDATE products SET cost_php=cost_idr*?", (rate,))
         if "selling_price_php" not in code_columns:
             self.db.execute("ALTER TABLE codes ADD COLUMN selling_price_php REAL NOT NULL DEFAULT 0")
             self.db.execute("UPDATE codes SET selling_price_php=(SELECT selling_price FROM products WHERE products.id=codes.product_id)")
-        self.db.execute("DELETE FROM settings WHERE key='idr_to_php'")
         self.db.commit()
 
     def style(self):
@@ -527,18 +523,6 @@ class InventoryApp:
         self.product_combo["values"] = [f'{p["id"]} | {p["name"]} | {p["type"]} | {p["days"]} days | ₱{p["selling_price"]:,.2f}' for p in rows]
         if self.c_product.get() not in self.product_combo["values"]:
             self.c_product.set(self.product_combo["values"][0] if self.product_combo["values"] else "")
-
-    def refresh_codes(self):
-        for item in self.codes_tree.get_children():
-            self.codes_tree.delete(item)
-        rows = self.db.execute("""
-        SELECT c.*,p.name,p.type,p.days,p.selling_price FROM codes c JOIN products p ON p.id=c.product_id ORDER BY c.id
-        """).fetchall()
-        for index, c in enumerate(rows, 1):
-            self.codes_tree.insert("", "end", iid=str(c["id"]), tags=("even" if index % 2 == 0 else "odd",), values=(
-                index, c["code"], c["name"], c["type"], c["days"], f'{c["cost_idr"]:,.2f}',
-                f'₱{c["cost_php"]:,.2f}', f'₱{c["selling_price"]:,.2f}',
-                c["status"], c["date_claimed"] or ""))
 
     def setting(self, key, default=""):
         row = self.db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
