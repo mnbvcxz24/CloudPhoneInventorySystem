@@ -264,17 +264,17 @@ class InventoryApp:
         self.editing_product_id = None
         cols = ("name", "type", "days", "stock", "price", "sold_qty", "sold_amount", "sold_cost", "sold_profit")
         self.products_tree = ttk.Treeview(self.products_tab, columns=cols, show="headings")
+        self.products_tree_columns = cols
+        self.products_tree_weights = (1.45, 0.75, 0.42, 0.95, 1.0, 0.62, 1.0, 1.0, 1.0)
         self.products_tree.tag_configure("odd", background=self.colors["surface"])
         self.products_tree.tag_configure("even", background=self.colors["table_alt"])
         labels = ("Name", "Type", "Days", "Available stock", "Selling price PHP", "Sold qty", "Sold amount PHP", "Sold cost PHP", "Profit PHP")
         widths = (155, 90, 55, 105, 135, 72, 125, 125, 115)
         for col, label, width in zip(cols, labels, widths):
             self.products_tree.heading(col, text=label, anchor="center")
-            self.products_tree.column(col, width=width, anchor="center")
+            self.products_tree.column(col, width=width, minwidth=42, anchor="center", stretch=True)
         self.products_tree.pack(fill="both", expand=True)
-        product_scroll = ttk.Scrollbar(self.products_tab, orient="horizontal", command=self.products_tree.xview)
-        product_scroll.pack(fill="x")
-        self.products_tree.configure(xscrollcommand=product_scroll.set)
+        self.products_tree.bind("<Configure>", lambda event: self.fit_table_columns(event, self.products_tree, self.products_tree_columns, self.products_tree_weights))
         ttk.Label(self.products_tab, text="Plans can share the same name, type, and duration while having different selling prices. Code costs are recorded individually in Code List.").pack(anchor="w", pady=(8, 0))
 
     def build_codes_tab(self):
@@ -305,17 +305,17 @@ class InventoryApp:
 
         cols = ("no", "code", "name", "type", "days", "cost_php", "price_php", "status", "date_claimed")
         self.codes_tree = ttk.Treeview(self.codes_tab, columns=cols, show="headings")
+        self.codes_tree_columns = cols
+        self.codes_tree_weights = (0.38, 1.55, 1.15, 0.68, 0.42, 0.78, 0.78, 0.88, 0.98)
         self.codes_tree.tag_configure("odd", background=self.colors["surface"])
         self.codes_tree.tag_configure("even", background=self.colors["table_alt"])
         labels = ("No", "Code", "Name", "Type", "Days", "Cost PHP", "Price PHP", "Availability", "Date claimed")
         widths = (48, 250, 150, 90, 55, 120, 120, 105, 110)
         for col, label, width in zip(cols, labels, widths):
             self.codes_tree.heading(col, text=label, anchor="center")
-            self.codes_tree.column(col, width=width, anchor="center")
+            self.codes_tree.column(col, width=width, minwidth=38, anchor="center", stretch=True)
         self.codes_tree.pack(fill="both", expand=True)
-        codes_scroll = ttk.Scrollbar(self.codes_tab, orient="horizontal", command=self.codes_tree.xview)
-        codes_scroll.pack(fill="x")
-        self.codes_tree.configure(xscrollcommand=codes_scroll.set)
+        self.codes_tree.bind("<Configure>", lambda event: self.fit_table_columns(event, self.codes_tree, self.codes_tree_columns, self.codes_tree_weights))
         ttk.Label(self.codes_tab, text="Select a code and click Edit cost & price to update its individual PHP cost and selling price. Changes recalculate revenue and profit, including claimed codes.").pack(anchor="w", pady=(8, 0))
 
     def build_summary_tab(self):
@@ -487,6 +487,19 @@ class InventoryApp:
         self.metric_cost.set(f"₱{cost:,.2f}")
         self.metric_profit.set(f"₱{revenue-cost:,.2f}")
 
+
+    def fit_table_columns(self, event, tree, columns, weights):
+        available = max(event.width - 4, 1)
+        total_weight = sum(weights)
+        min_widths = {
+            "no": 34, "code": 105, "name": 85, "type": 55, "days": 38,
+            "cost_php": 72, "price_php": 72, "status": 72, "date_claimed": 78,
+            "stock": 58, "price": 78, "sold_qty": 48, "sold_amount": 78,
+            "sold_cost": 78, "sold_profit": 78,
+        }
+        for column, weight in zip(columns, weights):
+            width = max(int(available * weight / total_weight), min_widths.get(column, 40))
+            tree.column(column, width=width, stretch=True)
 
     def refresh_products(self):
         for item in self.products_tree.get_children():
