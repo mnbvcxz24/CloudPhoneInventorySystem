@@ -38,15 +38,15 @@ class InventoryApp:
             name TEXT NOT NULL,
             type TEXT NOT NULL,
             days INTEGER NOT NULL DEFAULT 0,
-            cost_idr REAL NOT NULL DEFAULT 0,
+            cost_php REAL NOT NULL DEFAULT 0,
             selling_price REAL NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS codes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             code TEXT NOT NULL UNIQUE,
             product_id INTEGER NOT NULL REFERENCES products(id),
-            cost_idr REAL NOT NULL,
             cost_php REAL NOT NULL,
+            selling_price_php REAL NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'Available',
             date_claimed TEXT
         );
