@@ -8,9 +8,8 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
 
-APP_NAME = "RFInventorySystem"
+APP_NAME = "CloudPhoneInventorySystem"
 DB_PATH = Path(__file__).with_name("rf_inventory.db")
-DEFAULT_RATE = 0.0035375
 STATUSES = ("Available", "Reserved", "Claimed", "Expired")
 
 
@@ -53,10 +52,21 @@ class InventoryApp:
         );
         """)
         self.db.commit()
+        self.migrate_database()
 
-    def rate(self):
-        row = self.db.execute("SELECT value FROM settings WHERE key='idr_to_php'").fetchone()
-        return float(row["value"]) if row else DEFAULT_RATE
+    def migrate_database(self):
+        product_columns = {row["name"] for row in self.db.execute("PRAGMA table_info(products)")}
+        code_columns = {row["name"] for row in self.db.execute("PRAGMA table_info(codes)")}
+        if "cost_php" not in product_columns:
+            self.db.execute("ALTER TABLE products ADD COLUMN cost_php REAL NOT NULL DEFAULT 0")
+            old_rate = self.db.execute("SELECT value FROM settings WHERE key='idr_to_php'").fetchone()
+            rate = float(old_rate["value"]) if old_rate else 0.0035375
+            self.db.execute("UPDATE products SET cost_php=cost_idr*?", (rate,))
+        if "selling_price_php" not in code_columns:
+            self.db.execute("ALTER TABLE codes ADD COLUMN selling_price_php REAL NOT NULL DEFAULT 0")
+            self.db.execute("UPDATE codes SET selling_price_php=(SELECT selling_price FROM products WHERE products.id=codes.product_id)")
+        self.db.execute("DELETE FROM settings WHERE key='idr_to_php'")
+        self.db.commit()
 
     def style(self):
         self.colors = {
@@ -143,7 +153,7 @@ class InventoryApp:
         mark = tk.Label(brand, text="RF", bg=self.colors["primary"], fg="#FFFFFF",
                         font=("Segoe UI", 15, "bold"), width=3, height=1, pady=7)
         mark.pack(anchor="w", pady=(0, 12))
-        tk.Label(brand, text="RFInventory", bg=self.colors["sidebar"], fg="#FFFFFF",
+        tk.Label(brand, text="CloudPhoneInventory", bg=self.colors["sidebar"], fg="#FFFFFF",
                  font=("Segoe UI", 15, "bold")).pack(anchor="w")
         tk.Label(brand, text="INVENTORY WORKSPACE", bg=self.colors["sidebar"], fg="#9EACCA",
                  font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(4, 0))
@@ -172,7 +182,7 @@ class InventoryApp:
         sidebar_footer = tk.Frame(sidebar, bg=self.colors["sidebar"])
         sidebar_footer.pack(side="bottom", fill="x", padx=20, pady=20)
         tk.Frame(sidebar_footer, bg="#34415F", height=1).pack(fill="x", pady=(0, 12))
-        tk.Label(sidebar_footer, text="REDFINGER CODE SALES", bg=self.colors["sidebar"],
+        tk.Label(sidebar_footer, text="CLOUD PHONE INVENTORY", bg=self.colors["sidebar"],
                  fg="#9EACCA", font=("Segoe UI", 8, "bold")).pack(anchor="w")
         tk.Label(sidebar_footer, text="Local inventory • Google Sheets sync", bg=self.colors["sidebar"],
                  fg="#9EACCA", font=("Segoe UI", 8), wraplength=175, justify="left").pack(anchor="w", pady=(5, 0))
@@ -188,7 +198,7 @@ class InventoryApp:
         title_area = tk.Frame(header, bg=self.colors["surface"])
         title_area.pack(side="left", fill="y", padx=25, pady=15)
         self.page_title = tk.StringVar(value="Product & Sales")
-        self.page_subtitle = tk.StringVar(value="Manage plans, pricing, and sales performance.")
+        self.page_subtitle = tk.StringVar(value="Manage cloud-phone plans, PHP costs, and selling prices.")
         tk.Label(title_area, textvariable=self.page_title, bg=self.colors["surface"], fg=self.colors["text"],
                  font=("Segoe UI", 17, "bold")).pack(anchor="w")
         tk.Label(title_area, textvariable=self.page_subtitle, bg=self.colors["surface"], fg=self.colors["muted"],
@@ -218,7 +228,7 @@ class InventoryApp:
     def show_page(self, page):
         pages = {
             "products": (self.products_tab, "Product & Sales", "Manage plans, pricing, and sales performance."),
-            "codes": (self.codes_tab, "Code List", "Track individual codes, availability, and purchase costs."),
+            "codes": (self.codes_tab, "Code List", "Track individual codes, PHP costs, prices, and availability."),
             "summary": (self.summary_tab, "Profit Summary", "Review revenue, claimed-code costs, and net profit."),
         }
         for frame, _, _ in pages.values():
@@ -244,7 +254,7 @@ class InventoryApp:
         self.p_cost = tk.StringVar(value="0")
         self.p_price = tk.StringVar(value="0")
         fields = [("Name", self.p_name, 18), ("Type", self.p_type, 14), ("Days", self.p_days, 8),
-                  ("Cost / code (IDR)", self.p_cost, 16), ("Selling price / code (PHP)", self.p_price, 18)]
+                  ("Default cost / code (PHP)", self.p_cost, 18), ("Selling price / code (PHP)", self.p_price, 18)]
         self.p_name_entry = None
         for i, (label, var, width) in enumerate(fields):
             ttk.Label(form, text=label).grid(row=0, column=i, sticky="w", padx=4)
@@ -256,12 +266,12 @@ class InventoryApp:
         self.product_save_btn.grid(row=1, column=len(fields), padx=8)
         ttk.Button(form, text="Edit selected", command=self.edit_selected_product).grid(row=1, column=len(fields) + 1, padx=4)
         self.editing_product_id = None
-        cols = ("name", "type", "days", "stock", "cost_idr", "cost_php", "price", "sold_qty", "sold_amount", "sold_cost", "sold_profit")
+        cols = ("name", "type", "days", "stock", "cost_php", "price", "sold_qty", "sold_amount", "sold_cost", "sold_profit")
         self.products_tree = ttk.Treeview(self.products_tab, columns=cols, show="headings")
         self.products_tree.tag_configure("odd", background=self.colors["surface"])
         self.products_tree.tag_configure("even", background=self.colors["table_alt"])
-        labels = ("Name", "Type", "Days", "Available stock", "Default cost IDR", "Default cost PHP", "Selling price", "Sold qty", "Sold amount", "Sold cost PHP", "Profit PHP")
-        widths = (155, 90, 55, 105, 112, 112, 112, 72, 112, 112, 105)
+        labels = ("Name", "Type", "Days", "Available stock", "Default cost PHP", "Selling price PHP", "Sold qty", "Sold amount PHP", "Sold cost PHP", "Profit PHP")
+        widths = (155, 90, 55, 105, 125, 125, 72, 125, 125, 115)
         for col, label, width in zip(cols, labels, widths):
             self.products_tree.heading(col, text=label, anchor="center")
             self.products_tree.column(col, width=width, anchor="center")
@@ -278,18 +288,14 @@ class InventoryApp:
         self.c_product = tk.StringVar()
         self.c_cost = tk.StringVar()
         self.c_status = tk.StringVar(value="Available")
-        self.rate_var = tk.StringVar(value=str(self.rate()))
         ttk.Label(form, text="Code").grid(row=0, column=0, sticky="w", padx=4)
         ttk.Entry(form, textvariable=self.c_code, width=30).grid(row=1, column=0, padx=4, pady=4)
         ttk.Label(form, text="Product plan").grid(row=0, column=1, sticky="w", padx=4)
         self.product_combo = ttk.Combobox(form, textvariable=self.c_product, state="readonly", width=26)
         self.product_combo.grid(row=1, column=1, padx=4, pady=4)
-        ttk.Label(form, text="Cost override (IDR, optional)").grid(row=0, column=2, sticky="w", padx=4)
+        ttk.Label(form, text="Cost override (PHP, optional)").grid(row=0, column=2, sticky="w", padx=4)
         ttk.Entry(form, textvariable=self.c_cost, width=22).grid(row=1, column=2, padx=4, pady=4)
         ttk.Button(form, text="Add code", command=self.add_code).grid(row=1, column=3, padx=8)
-        ttk.Label(form, text="IDR → PHP rate").grid(row=0, column=4, sticky="w", padx=4)
-        ttk.Entry(form, textvariable=self.rate_var, width=13).grid(row=1, column=4, padx=4)
-        ttk.Button(form, text="Save rate", command=self.save_rate).grid(row=1, column=5, padx=4)
 
         actions = ttk.Frame(self.codes_tab)
         actions.pack(fill="x", pady=(0, 8))
@@ -298,15 +304,15 @@ class InventoryApp:
         self.status_combo.set("Available")
         self.status_combo.pack(side="left", padx=8)
         ttk.Button(actions, text="Update status", command=self.update_status).pack(side="left")
-        ttk.Button(actions, text="Edit cost (IDR)", command=self.edit_selected_code_cost).pack(side="left", padx=8)
+        ttk.Button(actions, text="Edit cost & price", command=self.edit_selected_code_prices).pack(side="left", padx=8)
         ttk.Button(actions, text="Delete selected", command=self.delete_code).pack(side="left", padx=8)
 
-        cols = ("no", "code", "name", "type", "days", "cost_idr", "cost_php", "sold_price_php", "status", "date_claimed")
+        cols = ("no", "code", "name", "type", "days", "cost_php", "price_php", "status", "date_claimed")
         self.codes_tree = ttk.Treeview(self.codes_tab, columns=cols, show="headings")
         self.codes_tree.tag_configure("odd", background=self.colors["surface"])
         self.codes_tree.tag_configure("even", background=self.colors["table_alt"])
-        labels = ("No", "Code", "Name", "Type", "Days", "Cost IDR", "Cost PHP", "Sold price PHP", "Availability", "Date claimed")
-        widths = (48, 250, 150, 90, 55, 105, 110, 125, 105, 110)
+        labels = ("No", "Code", "Name", "Type", "Days", "Cost PHP", "Price PHP", "Availability", "Date claimed")
+        widths = (48, 250, 150, 90, 55, 120, 120, 105, 110)
         for col, label, width in zip(cols, labels, widths):
             self.codes_tree.heading(col, text=label, anchor="center")
             self.codes_tree.column(col, width=width, anchor="center")
@@ -314,7 +320,7 @@ class InventoryApp:
         codes_scroll = ttk.Scrollbar(self.codes_tab, orient="horizontal", command=self.codes_tree.xview)
         codes_scroll.pack(fill="x")
         self.codes_tree.configure(xscrollcommand=codes_scroll.set)
-        ttk.Label(self.codes_tab, text="Select a code and click Edit cost (IDR) to record its actual purchase price. Editing a cost recalculates that code's PHP cost using the current rate.").pack(anchor="w", pady=(8, 0))
+        ttk.Label(self.codes_tab, text="Select a code and click Edit cost & price to update its individual PHP cost and selling price. Changes recalculate revenue and profit, including claimed codes.").pack(anchor="w", pady=(8, 0))
 
     def build_summary_tab(self):
         self.metric_revenue = tk.StringVar()
@@ -340,12 +346,12 @@ class InventoryApp:
                 raise ValueError
             if self.editing_product_id is None:
                 self.db.execute(
-                    "INSERT INTO products(name,type,days,cost_idr,selling_price) VALUES(?,?,?,?,?)",
+                    "INSERT INTO products(name,type,days,cost_php,selling_price) VALUES(?,?,?,?,?)",
                     (name, typ, days, cost, price),
                 )
             else:
                 self.db.execute(
-                    "UPDATE products SET name=?,type=?,days=?,cost_idr=?,selling_price=? WHERE id=?",
+                    "UPDATE products SET name=?,type=?,days=?,cost_php=?,selling_price=? WHERE id=?",
                     (name, typ, days, cost, price, self.editing_product_id),
                 )
             self.db.commit()
@@ -371,7 +377,7 @@ class InventoryApp:
         self.p_name.set(product["name"])
         self.p_type.set(product["type"])
         self.p_days.set(str(product["days"]))
-        self.p_cost.set(str(product["cost_idr"]))
+        self.p_cost.set(str(product["cost_php"]))
         self.p_price.set(str(product["selling_price"]))
         self.product_save_btn.configure(text="Save changes")
         self.p_name_entry.focus_set()
@@ -391,22 +397,22 @@ class InventoryApp:
             product = self.selected_product_id()
             if not code or product is None:
                 raise ValueError
-            p = self.db.execute("SELECT cost_idr FROM products WHERE id=?", (product,)).fetchone()
-            cost = float(self.c_cost.get()) if self.c_cost.get().strip() else float(p["cost_idr"])
+            p = self.db.execute("SELECT cost_php,selling_price FROM products WHERE id=?", (product,)).fetchone()
+            cost = float(self.c_cost.get()) if self.c_cost.get().strip() else float(p["cost_php"])
             if cost < 0:
                 raise ValueError
-            locked_php = cost * self.rate()
-            self.db.execute("INSERT INTO codes(code,product_id,cost_idr,cost_php,status) VALUES(?,?,?,?, 'Available')",
-                            (code, product, cost, locked_php))
+            self.db.execute("INSERT INTO codes(code,product_id,cost_php,selling_price_php,status) VALUES(?,?,?,?, 'Available')",
+                            (code, product, cost, float(p["selling_price"])))
             self.db.commit()
             self.c_code.set("")
             self.c_cost.set("")
             self.refresh_all()
             self.sync_to_sheets()
         except ValueError:
-            messagebox.showerror("Invalid code", "Enter a unique code, choose a product, and use a valid non-negative cost.")
+            messagebox.showerror("Invalid code", "Enter a unique code, choose a product, and use a valid non-negative PHP cost.")
         except sqlite3.IntegrityError:
             messagebox.showerror("Duplicate code", "That code already exists. Each code must be unique.")
+
 
     def selected_product_id(self):
         value = self.c_product.get()
@@ -416,28 +422,6 @@ class InventoryApp:
             return int(value.split(" | ", 1)[0])
         except ValueError:
             return None
-
-    def save_rate(self):
-        try:
-            value = float(self.rate_var.get())
-            if value <= 0:
-                raise ValueError
-            self.db.execute("INSERT INTO settings(key,value) VALUES('idr_to_php',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(value),))
-            # Recalculate PHP costs for every code that has not been claimed.
-            # Claimed codes retain their recorded PHP cost so historical profit stays accurate.
-            self.db.execute(
-                "UPDATE codes SET cost_php=cost_idr*? WHERE status!='Claimed'",
-                (value,),
-            )
-            self.db.commit()
-            self.refresh_all()
-            self.sync_to_sheets()
-            messagebox.showinfo(
-                "Exchange rate saved",
-                "PHP costs were updated for unclaimed codes. Claimed code costs remain locked to preserve actual profit.",
-            )
-        except ValueError:
-            messagebox.showerror("Invalid rate", "Enter a positive number.")
 
     def update_status(self):
         selected = self.codes_tree.selection()
@@ -458,31 +442,26 @@ class InventoryApp:
         self.refresh_all()
         self.sync_to_sheets()
 
-    def edit_selected_code_cost(self):
+    def edit_selected_code_prices(self):
         selected = self.codes_tree.selection()
         if not selected:
             messagebox.showwarning("Select a code", "Choose a code first.")
             return
         code_id = int(selected[0])
-        row = self.db.execute("SELECT code,cost_idr FROM codes WHERE id=?", (code_id,)).fetchone()
+        row = self.db.execute("SELECT code,cost_php,selling_price_php FROM codes WHERE id=?", (code_id,)).fetchone()
         if not row:
             return
-        value = simpledialog.askfloat(
-            "Edit code cost",
-            f"Enter the actual purchase cost in IDR for code:\n{row['code']}",
-            initialvalue=float(row["cost_idr"]),
-            minvalue=0,
-            parent=self.root,
-        )
-        if value is None:
+        cost = simpledialog.askfloat("Edit code cost", f"Cost PHP for code:\n{row['code']}", initialvalue=float(row["cost_php"]), minvalue=0, parent=self.root)
+        if cost is None:
             return
-        self.db.execute(
-            "UPDATE codes SET cost_idr=?,cost_php=? WHERE id=?",
-            (value, value * self.rate(), code_id),
-        )
+        price = simpledialog.askfloat("Edit code price", f"Selling price PHP for code:\n{row['code']}", initialvalue=float(row["selling_price_php"]), minvalue=0, parent=self.root)
+        if price is None:
+            return
+        self.db.execute("UPDATE codes SET cost_php=?,selling_price_php=? WHERE id=?", (cost, price, code_id))
         self.db.commit()
         self.refresh_all()
         self.sync_to_sheets()
+
 
     def delete_code(self):
         selected = self.codes_tree.selection()
@@ -500,32 +479,43 @@ class InventoryApp:
         self.refresh_products()
         self.refresh_codes()
         self.refresh_product_combo()
-        claimed = self.db.execute("""
-            SELECT COALESCE(SUM(p.selling_price),0) AS revenue,
-                   COALESCE(SUM(c.cost_php),0) AS cost
-            FROM codes c JOIN products p ON p.id=c.product_id WHERE c.status='Claimed'
-        """).fetchone()
+        claimed = self.db.execute("SELECT COALESCE(SUM(selling_price_php),0) AS revenue, COALESCE(SUM(cost_php),0) AS cost FROM codes WHERE status='Claimed'").fetchone()
         revenue, cost = float(claimed["revenue"]), float(claimed["cost"])
         self.metric_revenue.set(f"₱{revenue:,.2f}")
         self.metric_cost.set(f"₱{cost:,.2f}")
         self.metric_profit.set(f"₱{revenue-cost:,.2f}")
 
+
     def refresh_products(self):
         for item in self.products_tree.get_children():
             self.products_tree.delete(item)
         rows = self.db.execute("""
-        SELECT p.*,
-          (SELECT COUNT(*) FROM codes c WHERE c.product_id=p.id AND c.status='Available') stock,
-          (SELECT COUNT(*) FROM codes c WHERE c.product_id=p.id AND c.status='Claimed') sold,
-          (SELECT COALESCE(SUM(c.cost_php),0) FROM codes c WHERE c.product_id=p.id AND c.status='Claimed') sold_cost
-        FROM products p ORDER BY p.id
+            SELECT p.*,
+              (SELECT COUNT(*) FROM codes c WHERE c.product_id=p.id AND c.status='Available') stock,
+              (SELECT COUNT(*) FROM codes c WHERE c.product_id=p.id AND c.status='Claimed') sold,
+              (SELECT COALESCE(SUM(c.selling_price_php),0) FROM codes c WHERE c.product_id=p.id AND c.status='Claimed') sold_amount,
+              (SELECT COALESCE(SUM(c.cost_php),0) FROM codes c WHERE c.product_id=p.id AND c.status='Claimed') sold_cost
+            FROM products p ORDER BY p.id
         """).fetchall()
         for index, p in enumerate(rows):
             self.products_tree.insert("", "end", iid=str(p["id"]), tags=("even" if index % 2 else "odd",), values=(
-                p["name"], p["type"], p["days"], p["stock"], f'{p["cost_idr"]:,.2f}',
-                f'₱{p["cost_idr"]*self.rate():,.2f}', f'₱{p["selling_price"]:,.2f}',
-                p["sold"], f'₱{p["sold"]*p["selling_price"]:,.2f}', f'₱{p["sold_cost"]:,.2f}',
-                f'₱{p["sold"]*p["selling_price"]-p["sold_cost"]:,.2f}'))
+                p["name"], p["type"], p["days"], p["stock"], f'₱{p["cost_php"]:,.2f}',
+                f'₱{p["selling_price"]:,.2f}', p["sold"], f'₱{p["sold_amount"]:,.2f}',
+                f'₱{p["sold_cost"]:,.2f}', f'₱{p["sold_amount"]-p["sold_cost"]:,.2f}'))
+
+    def refresh_codes(self):
+        for item in self.codes_tree.get_children():
+            self.codes_tree.delete(item)
+        rows = self.db.execute("""
+            SELECT c.*,p.name,p.type,p.days FROM codes c
+            JOIN products p ON p.id=c.product_id ORDER BY c.id
+        """).fetchall()
+        for index, item in enumerate(rows, 1):
+            self.codes_tree.insert("", "end", iid=str(item["id"]), tags=("even" if index % 2 == 0 else "odd",), values=(
+                index, item["code"], item["name"], item["type"], item["days"],
+                f'₱{item["cost_php"]:,.2f}', f'₱{item["selling_price_php"]:,.2f}',
+                item["status"], item["date_claimed"] or ""))
+
 
     def refresh_product_combo(self):
         rows = self.db.execute("SELECT id,name,type,days FROM products ORDER BY name").fetchall()
@@ -600,42 +590,31 @@ class InventoryApp:
             SELECT p.*,
               (SELECT COUNT(*) FROM codes c WHERE c.product_id=p.id AND c.status='Available') AS stock,
               (SELECT COUNT(*) FROM codes c WHERE c.product_id=p.id AND c.status='Claimed') AS sold,
-              (SELECT COALESCE(SUM(p2.selling_price),0) FROM codes c2
-                 JOIN products p2 ON p2.id=c2.product_id
-                 WHERE c2.product_id=p.id AND c2.status='Claimed') AS sold_amount
+              (SELECT COALESCE(SUM(c.selling_price_php),0) FROM codes c WHERE c.product_id=p.id AND c.status='Claimed') AS sold_amount,
+              (SELECT COALESCE(SUM(c.cost_php),0) FROM codes c WHERE c.product_id=p.id AND c.status='Claimed') AS sold_cost
             FROM products p ORDER BY p.id
         """).fetchall()
-        codes = self.db.execute("""
-            SELECT c.*,p.name AS product_name,p.type AS product_type,p.days AS product_days,
-                   p.selling_price AS selling_price
-            FROM codes c JOIN products p ON p.id=c.product_id ORDER BY c.id
-        """).fetchall()
-        revenue = sum(float(c["selling_price"]) for c in codes if c["status"] == "Claimed")
-        cost = sum(float(c["cost_php"]) for c in codes if c["status"] == "Claimed")
-        cost_idr = sum(float(c["cost_idr"]) for c in codes if c["status"] == "Claimed")
+        codes = self.db.execute("SELECT c.*,p.name AS product_name,p.type AS product_type,p.days AS product_days FROM codes c JOIN products p ON p.id=c.product_id ORDER BY c.id").fetchall()
+        revenue = sum(float(x["selling_price_php"]) for x in codes if x["status"] == "Claimed")
+        cost = sum(float(x["cost_php"]) for x in codes if x["status"] == "Claimed")
         return {
             "token": self.setting("sheets_sync_token"),
             "generatedAt": datetime.now().isoformat(timespec="seconds"),
-            "exchangeRate": self.rate(),
             "products": [{
                 "id": p["id"], "name": p["name"], "type": p["type"], "days": p["days"],
-                "availableStock": p["stock"], "costIDR": p["cost_idr"],
-                "costPHP": p["cost_idr"] * self.rate(), "sellingPricePHP": p["selling_price"],
-                "soldQuantity": p["sold"], "soldAmountPHP": p["sold_amount"],
-                "soldCostPHP": sum(float(c["cost_php"]) for c in codes if c["product_id"] == p["id"] and c["status"] == "Claimed"),
-                "soldProfitPHP": p["sold_amount"] - sum(float(c["cost_php"]) for c in codes if c["product_id"] == p["id"] and c["status"] == "Claimed"),
+                "availableStock": p["stock"], "costPHP": p["cost_php"], "sellingPricePHP": p["selling_price"],
+                "soldQuantity": p["sold"], "soldAmountPHP": p["sold_amount"], "soldCostPHP": p["sold_cost"],
+                "soldProfitPHP": p["sold_amount"] - p["sold_cost"],
             } for p in products],
             "codes": [{
-                "id": c["id"], "code": c["code"], "productName": c["product_name"],
-                "productType": c["product_type"], "days": c["product_days"],
-                "status": c["status"], "dateClaimed": c["date_claimed"] or "",
-                "costIDR": c["cost_idr"], "lockedCostPHP": c["cost_php"],
-                "sellingPricePHP": c["selling_price"],
-            } for c in codes],
-            "summary": {
-                "revenuePHP": revenue, "costPHP": cost, "costIDR": cost_idr, "profitPHP": revenue - cost,
-            },
+                "id": x["id"], "code": x["code"], "productName": x["product_name"],
+                "productType": x["product_type"], "days": x["product_days"],
+                "status": x["status"], "dateClaimed": x["date_claimed"] or "",
+                "costPHP": x["cost_php"], "sellingPricePHP": x["selling_price_php"],
+            } for x in codes],
+            "summary": {"revenuePHP": revenue, "costPHP": cost, "profitPHP": revenue-cost},
         }
+
 
     def sync_to_sheets(self, show_result=False):
         url = self.setting("sheets_web_app_url").strip()
