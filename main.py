@@ -17,8 +17,8 @@ class InventoryApp:
     def __init__(self, root):
         self.root = root
         self.root.title(APP_NAME)
-        self.root.geometry("1120x700")
-        self.root.minsize(900, 580)
+        self.root.geometry("1180x720")
+        self.root.minsize(980, 620)
         self.db = sqlite3.connect(DB_PATH)
         self.db.row_factory = sqlite3.Row
         self.init_db()
@@ -149,11 +149,13 @@ class InventoryApp:
 
         brand = tk.Frame(sidebar, bg=self.colors["sidebar"])
         brand.pack(fill="x", padx=20, pady=(25, 28))
-        mark = tk.Label(brand, text="RF", bg=self.colors["primary"], fg="#FFFFFF",
-                        font=("Segoe UI", 15, "bold"), width=3, height=1, pady=7)
+        mark = tk.Label(brand, text="CP", bg=self.colors["primary"], fg="#FFFFFF",
+                        font=("Segoe UI", 14, "bold"), width=3, height=1, pady=6)
         mark.pack(anchor="w", pady=(0, 12))
-        tk.Label(brand, text="CloudPhoneInventory", bg=self.colors["sidebar"], fg="#FFFFFF",
-                 font=("Segoe UI", 15, "bold")).pack(anchor="w")
+        tk.Label(brand, text="CloudPhone", bg=self.colors["sidebar"], fg="#FFFFFF",
+                 font=("Segoe UI", 14, "bold")).pack(anchor="w")
+        tk.Label(brand, text="Inventory System", bg=self.colors["sidebar"], fg="#FFFFFF",
+                 font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(1, 0))
         tk.Label(brand, text="INVENTORY WORKSPACE", bg=self.colors["sidebar"], fg="#9EACCA",
                  font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(4, 0))
 
@@ -199,7 +201,7 @@ class InventoryApp:
         self.page_title = tk.StringVar(value="Product & Sales")
         self.page_subtitle = tk.StringVar(value="Manage cloud-phone plans, PHP costs, and selling prices.")
         tk.Label(title_area, textvariable=self.page_title, bg=self.colors["surface"], fg=self.colors["text"],
-                 font=("Segoe UI", 17, "bold")).pack(anchor="w")
+                 font=("Segoe UI", 15, "bold")).pack(anchor="w")
         tk.Label(title_area, textvariable=self.page_subtitle, bg=self.colors["surface"], fg=self.colors["muted"],
                  font=("Segoe UI", 9)).pack(anchor="w", pady=(3, 0))
 
@@ -250,10 +252,9 @@ class InventoryApp:
         self.p_name = tk.StringVar()
         self.p_type = tk.StringVar(value="Standard")
         self.p_days = tk.StringVar(value="30")
-        self.p_cost = tk.StringVar(value="0")
         self.p_price = tk.StringVar(value="0")
         fields = [("Name", self.p_name, 18), ("Type", self.p_type, 14), ("Days", self.p_days, 8),
-                  ("Default cost / code (PHP)", self.p_cost, 18), ("Selling price / code (PHP)", self.p_price, 18)]
+                  ("Selling price / code (PHP)", self.p_price, 18)]
         self.p_name_entry = None
         for i, (label, var, width) in enumerate(fields):
             ttk.Label(form, text=label).grid(row=0, column=i, sticky="w", padx=4)
@@ -265,12 +266,12 @@ class InventoryApp:
         self.product_save_btn.grid(row=1, column=len(fields), padx=8)
         ttk.Button(form, text="Edit selected", command=self.edit_selected_product).grid(row=1, column=len(fields) + 1, padx=4)
         self.editing_product_id = None
-        cols = ("name", "type", "days", "stock", "cost_php", "price", "sold_qty", "sold_amount", "sold_cost", "sold_profit")
+        cols = ("name", "type", "days", "stock", "price", "sold_qty", "sold_amount", "sold_cost", "sold_profit")
         self.products_tree = ttk.Treeview(self.products_tab, columns=cols, show="headings")
         self.products_tree.tag_configure("odd", background=self.colors["surface"])
         self.products_tree.tag_configure("even", background=self.colors["table_alt"])
-        labels = ("Name", "Type", "Days", "Available stock", "Default cost PHP", "Selling price PHP", "Sold qty", "Sold amount PHP", "Sold cost PHP", "Profit PHP")
-        widths = (155, 90, 55, 105, 125, 125, 72, 125, 125, 115)
+        labels = ("Name", "Type", "Days", "Available stock", "Selling price PHP", "Sold qty", "Sold amount PHP", "Sold cost PHP", "Profit PHP")
+        widths = (155, 90, 55, 105, 135, 72, 125, 125, 115)
         for col, label, width in zip(cols, labels, widths):
             self.products_tree.heading(col, text=label, anchor="center")
             self.products_tree.column(col, width=width, anchor="center")
@@ -278,7 +279,7 @@ class InventoryApp:
         product_scroll = ttk.Scrollbar(self.products_tab, orient="horizontal", command=self.products_tree.xview)
         product_scroll.pack(fill="x")
         self.products_tree.configure(xscrollcommand=product_scroll.set)
-        ttk.Label(self.products_tab, text="Sold cost and profit use each claimed code's own recorded cost. Default cost is only used for newly added codes without an override.").pack(anchor="w", pady=(8, 0))
+        ttk.Label(self.products_tab, text="Plans can share the same name, type, and duration while having different selling prices. Code costs are recorded individually in Code List.").pack(anchor="w", pady=(8, 0))
 
     def build_codes_tab(self):
         form = ttk.LabelFrame(self.codes_tab, text="Add single-use code", padding=10)
@@ -339,19 +340,18 @@ class InventoryApp:
             name = self.p_name.get().strip()
             typ = self.p_type.get().strip() or "Standard"
             days = int(self.p_days.get())
-            cost = float(self.p_cost.get())
             price = float(self.p_price.get())
-            if not name or days < 0 or cost < 0 or price < 0:
+            if not name or days < 0 or price < 0:
                 raise ValueError
             if self.editing_product_id is None:
                 self.db.execute(
                     "INSERT INTO products(name,type,days,cost_php,selling_price) VALUES(?,?,?,?,?)",
-                    (name, typ, days, cost, price),
+                    (name, typ, days, 0, price),
                 )
             else:
                 self.db.execute(
-                    "UPDATE products SET name=?,type=?,days=?,cost_php=?,selling_price=? WHERE id=?",
-                    (name, typ, days, cost, price, self.editing_product_id),
+                    "UPDATE products SET name=?,type=?,days=?,selling_price=? WHERE id=?",
+                    (name, typ, days, price, self.editing_product_id),
                 )
             self.db.commit()
             self.cancel_product_edit()
@@ -360,7 +360,7 @@ class InventoryApp:
         except (ValueError, sqlite3.IntegrityError):
             messagebox.showerror(
                 "Invalid product",
-                "Enter a name, whole number of days, and valid non-negative costs/prices.",
+                "Enter a name, whole number of days, and a valid non-negative selling price.",
             )
 
     def edit_selected_product(self):
@@ -376,7 +376,6 @@ class InventoryApp:
         self.p_name.set(product["name"])
         self.p_type.set(product["type"])
         self.p_days.set(str(product["days"]))
-        self.p_cost.set(str(product["cost_php"]))
         self.p_price.set(str(product["selling_price"]))
         self.product_save_btn.configure(text="Save changes")
         self.p_name_entry.focus_set()
@@ -386,7 +385,6 @@ class InventoryApp:
         self.p_name.set("")
         self.p_type.set("Standard")
         self.p_days.set("30")
-        self.p_cost.set("0")
         self.p_price.set("0")
         self.product_save_btn.configure(text="Add plan")
 
@@ -396,21 +394,30 @@ class InventoryApp:
             product = self.selected_product_id()
             if not code or product is None:
                 raise ValueError
-            p = self.db.execute("SELECT cost_php,selling_price FROM products WHERE id=?", (product,)).fetchone()
-            cost = float(self.c_cost.get()) if self.c_cost.get().strip() else float(p["cost_php"])
+            p = self.db.execute("SELECT selling_price FROM products WHERE id=?", (product,)).fetchone()
+            cost_text = self.c_cost.get().strip()
+            cost = float(cost_text) if cost_text else 0.0
             if cost < 0:
                 raise ValueError
-            self.db.execute("INSERT INTO codes(code,product_id,cost_php,selling_price_php,status) VALUES(?,?,?,?, 'Available')",
-                            (code, product, cost, float(p["selling_price"])))
+            cursor = self.db.execute(
+                "INSERT INTO codes(code,product_id,cost_php,selling_price_php,status) VALUES(?,?,?,?, 'Available')",
+                (code, product, cost, float(p["selling_price"])),
+            )
+            code_id = cursor.lastrowid
             self.db.commit()
             self.c_code.set("")
             self.c_cost.set("")
             self.refresh_all()
+            self.codes_tree.selection_set(str(code_id))
+            self.codes_tree.focus(str(code_id))
+            self.codes_tree.see(str(code_id))
             self.sync_to_sheets()
         except ValueError:
             messagebox.showerror("Invalid code", "Enter a unique code, choose a product, and use a valid non-negative PHP cost.")
         except sqlite3.IntegrityError:
             messagebox.showerror("Duplicate code", "That code already exists. Each code must be unique.")
+        except sqlite3.Error as error:
+            messagebox.showerror("Database error", f"The code could not be saved:\n{error}")
 
 
     def selected_product_id(self):
@@ -498,8 +505,7 @@ class InventoryApp:
         """).fetchall()
         for index, p in enumerate(rows):
             self.products_tree.insert("", "end", iid=str(p["id"]), tags=("even" if index % 2 else "odd",), values=(
-                p["name"], p["type"], p["days"], p["stock"], f'₱{p["cost_php"]:,.2f}',
-                f'₱{p["selling_price"]:,.2f}', p["sold"], f'₱{p["sold_amount"]:,.2f}',
+                p["name"], p["type"], p["days"], p["stock"], f'₱{p["selling_price"]:,.2f}', p["sold"], f'₱{p["sold_amount"]:,.2f}',
                 f'₱{p["sold_cost"]:,.2f}', f'₱{p["sold_amount"]-p["sold_cost"]:,.2f}'))
 
     def refresh_codes(self):
@@ -517,8 +523,8 @@ class InventoryApp:
 
 
     def refresh_product_combo(self):
-        rows = self.db.execute("SELECT id,name,type,days FROM products ORDER BY name").fetchall()
-        self.product_combo["values"] = [f'{p["id"]} | {p["name"]} | {p["type"]} | {p["days"]} days' for p in rows]
+        rows = self.db.execute("SELECT id,name,type,days,selling_price FROM products ORDER BY name,selling_price").fetchall()
+        self.product_combo["values"] = [f'{p["id"]} | {p["name"]} | {p["type"]} | {p["days"]} days | ₱{p["selling_price"]:,.2f}' for p in rows]
         if self.c_product.get() not in self.product_combo["values"]:
             self.c_product.set(self.product_combo["values"][0] if self.product_combo["values"] else "")
 
