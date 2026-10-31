@@ -30,7 +30,6 @@ class InventoryApp:
         self.db.executescript("""
         PRAGMA foreign_keys = ON;
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-        INSERT OR IGNORE INTO settings(key,value) VALUES ('idr_to_php','0.0035375');
         INSERT OR IGNORE INTO settings(key,value) VALUES ('sheets_web_app_url','');
         INSERT OR IGNORE INTO settings(key,value) VALUES ('sheets_sync_token','');
         CREATE TABLE IF NOT EXISTS products (
